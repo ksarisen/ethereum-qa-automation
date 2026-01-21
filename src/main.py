@@ -1,91 +1,79 @@
-import json
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
-import os
+from web3 import Account
+from src.client import create_web3, check_connection, get_balance, send_transaction, wait_for_confirmations, wait_for_receipt
+from src.config import *
 from src.logger import logger
-from src.client import get_account, send_transaction, w3, check_connection
-from src.config import MAX_AMOUNT, MIN_AMOUNT, RECIPIENT_ADDRESS, NETWORK
+from src.utils import generate_random_amount, normalize_for_json, save_artifact, is_duplicate_tx, get_timestamp_tr
+from src.validators import validate_transaction_receipt
 
-import random
+def main():
+    w3 = create_web3(RPC_URL)
+    check_connection(w3)
 
-def validate_receipt_schema(receipt):
-    assert isinstance(receipt.blockNumber, int), "blockNumber must be int"
-    assert isinstance(receipt.status, int), "status must be int"
-    assert receipt.status in [0, 1], "status must be 0 or 1"
-    assert receipt.transactionHash is not None, "transactionHash missing"
-    assert receipt.blockHash is not None, "blockHash missing"
-    assert receipt.to.lower() == RECIPIENT_ADDRESS.lower(), "Recipient mismatch"
-
-    logger.info("Receipt schema validation passed")
-
-def save_artifact(data):
-    os.makedirs("artifacts", exist_ok = True)
-    filename = f"artifacts/tx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    
-    with open(filename, "w") as f:
-        json.dump(data, f, indent = 2)
-
-    logger.info(f"Artifact saved: {filename}")
-    
-def get_balance(address):
-    return w3.eth.get_balance(address)
-
-def generate_random_amount(min_eth, max_eth):
-    amount = round(random.uniform(min_eth, max_eth), 6)
-    logger.info(f"Random ETH amount: {amount}")
-
-    return amount
-
-def eth_to_wei(w3, eth_amount):
-    return w3.to_wei(eth_amount, 'ether')
-
-if __name__ == "__main__":
-    check_connection()
+    sender = Account.from_key(PRIVATE_KEY)
 
     # Step 1: Balance before
-    balance_before = get_balance(RECIPIENT_ADDRESS)
-    logger.info(f"Balance before: {balance_before}")
+    balance_before = get_balance(w3, RECIPIENT_ADDRESS)
+    logger.info(f"Balance before: {balance_before} wei ({float(w3.from_wei(balance_before, 'ether'))} ETH)")
 
     # Step 2: Random amount
     amount_eth = generate_random_amount(MIN_AMOUNT, MAX_AMOUNT)
-    amount_wei = eth_to_wei(w3, amount_eth)
+    amount_wei = int(w3.to_wei(amount_eth, "ether"))
+    logger.info(f"Random ETH amount: {amount_eth} ETH ({amount_wei} wei)")
 
     # Step 3: Send transaction
-    sender = get_account()
-    tx_hash = send_transaction(sender, RECIPIENT_ADDRESS, amount_wei)
+    tx_hash = send_transaction(w3, sender, RECIPIENT_ADDRESS, amount_wei)
+    logger.info(f"Transaction sent: {tx_hash}")
 
     # Step 4: Wait for confirmation
-    logger.info("Waiting for confirmation...")
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    logger.info(f"Block: {receipt.blockNumber}")
+    receipt = wait_for_receipt(w3, tx_hash)
 
-    # Step 5: Schema validation
-    validate_receipt_schema(receipt)   # Schema validation
+    # Step 5: Wait for confirmations
+    confirmations, chain_head = wait_for_confirmations(w3, receipt)
 
-    # Step 6: Balance after
-    balance_after = get_balance(RECIPIENT_ADDRESS)
-    logger.info(f"Balance after: {balance_after}")
+    # Step 6: Verify result.to and result.value (eth_getTransactionByHash equivalent)
+    tx = w3.eth.get_transaction(tx_hash)
 
-    # Step 7: Assertion
+    assert tx["to"].lower() == RECIPIENT_ADDRESS.lower(), "Recipient mismatch in transaction"
+    assert tx["value"] == amount_wei, "Amount mismatch in transaction"
+
+    logger.info("Transaction fields (to, value) verified via RPC")
+
+    # Step 7: Schema validation
+    validate_transaction_receipt(receipt, RECIPIENT_ADDRESS)
+
+    # Step 8: Balance after
+    balance_after = get_balance(w3, RECIPIENT_ADDRESS)
+    logger.info(f"Balance after: {balance_after} wei ({float(w3.from_wei(balance_after, 'ether'))} ETH)")
+
+    # Step 9: Balance assertion
     assert balance_after - balance_before == amount_wei, "Balance verification failed"
     logger.info("Balance verification passed")
 
-    # Step 8: Artifact
+    # Step 10: Artifact
     artifact = {
-        "sender": sender.address,
-        "receiver": RECIPIENT_ADDRESS,
-        "amount_eth": amount_eth,
-        "amount_wei": amount_wei,
-        "tx_hash": tx_hash,
-        "block_number": receipt.blockNumber,
-        "block_hash": receipt.blockHash.hex(),
-        "status": receipt.status,
-        "timestamp": datetime.now(ZoneInfo("Europe/Istanbul")).isoformat(),
-        "network": NETWORK
+        "summary": {
+            "sender": sender.address,
+            "receiver": RECIPIENT_ADDRESS,
+            "amount_eth": amount_eth,
+            "amount_wei": amount_wei,
+            "tx_hash": tx_hash,
+            "block_number": receipt.blockNumber,
+            "block_hash": receipt.blockHash.hex(),
+            "chain_head": chain_head,
+            "gas_used": receipt.gasUsed,
+            "status": receipt.status,
+            "confirmations": confirmations,
+            "network": NETWORK,
+            "timestamp": get_timestamp_tr(),
+        },
+        "raw_full_receipt": normalize_for_json(dict(receipt))
     }
 
-    save_artifact(artifact)
+    # Step 11: Duplicate check
+    if is_duplicate_tx(tx_hash):
+        logger.warning("Duplicate transaction detected, artifact not saved.")
+    else:
+        save_artifact(artifact)
 
-    
-
-    
+if __name__ == "__main__":
+    main()
