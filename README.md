@@ -128,8 +128,7 @@ Each execution produces:
 - A JSON artifact under `artifacts/` structured into two layers:
   - `summary`: concise, human-readable test result and key metadata
   - `raw`: full transaction receipt returned by the JSON-RPC node
-
-This separation improves both readability and auditability.
+- The artifacts/ directory is created automatically at runtime if it does not exist.
 
 Example artifact:
 

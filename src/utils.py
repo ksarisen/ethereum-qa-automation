@@ -13,11 +13,15 @@ def generate_random_amount(min_eth, max_eth):
     return amount
 
 def save_artifact(artifact: dict, folder="artifacts"):
-    os.makedirs("artifacts", exist_ok = True)
-    filename = f"artifacts/tx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    
+    os.makedirs(folder, exist_ok=True)
+
+    filename = os.path.join(
+        folder,
+        f"tx_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    )
+
     with open(filename, "w") as f:
-        json.dump(artifact, f, indent = 2)
+        json.dump(artifact, f, indent=2)
 
     logger.info(f"Artifact saved: {filename}")
 
