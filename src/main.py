@@ -24,7 +24,7 @@ def main():
     tx_hash = send_transaction(w3, sender, RECIPIENT_ADDRESS, amount_wei)
     logger.info(f"Transaction sent: {tx_hash}")
 
-    # Step 4: Wait for confirmation
+    # Step 4: Polling until transaction receipt appears
     receipt = wait_for_receipt(w3, tx_hash)
 
     # Step 5: Wait for confirmations
