@@ -66,6 +66,7 @@ Example logs:
 ```yaml
 Transaction mined in block: 10086656
 Waiting for confirmations (target: 3)...
+New block: 10086656 → confirmations: 1
 New block: 10086657 → confirmations: 2
 New block: 10086658 → confirmations: 3
 Transaction finalized with 3 confirmations
