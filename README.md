@@ -53,6 +53,8 @@ A transaction is considered:
 
 Confirmation count is calculated using:
 
+confirmations = current_block - transaction_block + 1
+
 The minimum number of confirmations is configurable via:
 
 ```python
